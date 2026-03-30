@@ -29,6 +29,12 @@ if __name__ == "__main__":
         dest="fps", 
         help="Frames per second with which the simulation data input was generated.")
     parser.add_argument(
+        "--max_frame", 
+        type=int,
+        default=-1, 
+        dest="max_frame", 
+        help="Maximum frame to render.")
+    parser.add_argument(
         "--up-axis", 
         default="Z", 
         type=str, 
@@ -52,7 +58,7 @@ if __name__ == "__main__":
     renderer = UsdRenderer(stage, up_axis=args.up_axis, fps=args.fps)
 
     if args.from_pba:
-        pba.render_pba_simulation_to_usd(renderer, args.input, args.lazy, args.fps)
+        pba.render_pba_simulation_to_usd(renderer, args.input, args.fps, args.max_frame)
 
     renderer.save()
         

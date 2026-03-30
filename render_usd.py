@@ -479,7 +479,7 @@ class UsdRenderer:
         parent_body: str = None,
         is_template: bool = False,
     ):
-        from pxr import UsdGeom, Sdf
+        from pxr import UsdGeom, Sdf, Vt, Gf
 
         if is_template:
             prim_path = self._resolve_path(name, parent_body, is_template)
@@ -495,7 +495,7 @@ class UsdRenderer:
         mesh = UsdGeom.Mesh.Get(self.stage, mesh_path)
         if not mesh:
             mesh = UsdGeom.Mesh.Define(self.stage, mesh_path)
-            UsdGeom.Primvar(mesh.GetDisplayColorAttr()).SetInterpolation("vertex")
+            UsdGeom.Primvar(mesh.GetDisplayColorAttr()).SetInterpolation(UsdGeom.Tokens.constant)
             _usd_add_xform(mesh)
 
             # force topology update on first frame
@@ -508,14 +508,72 @@ class UsdRenderer:
             mesh.GetFaceVertexIndicesAttr().Set(idxs, self.time)
             mesh.GetFaceVertexCountsAttr().Set([3] * len(idxs), self.time)
 
-        if colors:
-            mesh.GetDisplayColorAttr().Set(colors, self.time)
+        if colors is not None:
+            col = Vt.Vec3fArray([(c[0], c[1], c[2]) for c in colors])
+            mesh.GetDisplayColorAttr().Set(col, self.time)
 
         self._shape_constructors[name] = UsdGeom.Mesh
         self._shape_custom_scale[name] = scale
 
         if not is_template:
             _usd_set_xform(mesh, pos, rot, scale, self.time)
+
+        return prim_path
+    
+    def render_tetmesh(
+        self,
+        tet_name: str,
+        points,
+        indices,
+        colors=None,
+        pos=(0.0, 0.0, 0.0),
+        rot=(0.0, 0.0, 0.0, 1.0),
+        scale=(1.0, 1.0, 1.0),
+        update_topology=False,
+        parent_body: str = None,
+        is_template: bool = False,
+    ):
+        from pxr import UsdGeom, Sdf, Vt, Gf
+
+        if is_template:
+            prim_path = self._resolve_path(tet_name, parent_body, is_template)
+            blueprint = UsdGeom.Scope.Define(self.stage, prim_path)
+            blueprint_prim = blueprint.GetPrim()
+            blueprint_prim.SetInstanceable(True)
+            blueprint_prim.SetSpecifier(Sdf.SpecifierClass)
+            tet_path = prim_path.AppendChild("tet")
+        else:
+            tet_path = self._resolve_path(tet_name, parent_body)
+            prim_path = tet_path
+
+        tet = UsdGeom.TetMesh.Get(self.stage, tet_path)
+
+        if not tet:
+            tet = UsdGeom.TetMesh.Define(self.stage, tet_path)
+            UsdGeom.Primvar(tet.GetDisplayColorAttr()).SetInterpolation("faceVarying")
+            _usd_add_xform(tet)
+
+            # force topology update on first frame
+            update_topology = True
+
+        tet.GetPointsAttr().Set(points, self.time)
+
+        faces = None
+        if update_topology:
+            idxs = np.array(indices).reshape(-1, 4)
+            tet.GetTetVertexIndicesAttr().Set(idxs, self.time)
+            faces = tet.ComputeSurfaceFaces(tet, self.time)
+
+        self.render_mesh("simsurf_" + tet_name, points, faces, colors=colors, pos=pos, rot=rot, scale=scale, update_topology=update_topology, parent_body=parent_body, is_template=is_template)
+
+        # if colors is not None:
+        #     tet.GetDisplayColorAttr().Set(colors, self.time)
+
+        self._shape_constructors[tet_name] = UsdGeom.TetMesh
+        self._shape_custom_scale[tet_name] = scale
+
+        if not is_template:
+            _usd_set_xform(tet, pos, rot, scale, self.time)
 
         return prim_path
 

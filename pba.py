@@ -1,62 +1,50 @@
+from html import entities
 from render_usd import UsdRenderer
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
+import h5py as h5
 import igl
 import os
+import numpy as np
 
-def load_pba_simulation_eager(path: str):
-    filenames = os.listdir(path)
-    files = [None]*len(filenames)
-    for i, filename in enumerate(filenames):
-        tokens = filename.split('.')
-        frame, entity = int(tokens[-3]), int(tokens[-2])
-        V, F = igl.read_triangle_mesh(os.path.join(path, filename))
-        files[i] = (frame, entity, V, F)
+fem_loc = "pbat.sim.dynamics.FemElastoDynamics"
+fem_mesh_loc = "pbat.fem.Mesh"
 
-    nframes = max(files, key = lambda x: x[0])[0] + 1
-    files = sorted(files, key = lambda x: (x[0], x[1]))
-    frames = [{} for _ in range(nframes)]
-    for (frame, entity, V, F) in files:
-        frames[frame]["Entity{}".format(entity)] = (V, F)
-
+def load_pba_simulation(file: str, frame_stop: int):
+    frames = {}
+    with h5.File(file, "r") as f:
+        data = f["sim"]
+        for i, frame in enumerate(data):
+            if frame_stop != -1 and i > frame_stop:
+                break
+            E = np.array(data[frame][fem_loc][fem_mesh_loc]["E"])
+            lamegU = np.array(data[frame][fem_loc]["lamegU"])
+            X = np.array(data[frame][fem_loc]["x"])
+            frames[i] = (X.T, E.T, lamegU.T)
+    # print(frames)
     return frames
 
-def load_pba_simulation_lazy(path: str):
-    filenames = os.listdir(path)
-    files = [None]*len(filenames)
-    for i, filename in enumerate(filenames):
-        tokens = filename.split('.')
-        frame, entity = int(tokens[-3]), int(tokens[-2])
-        files[i] = (frame, entity, os.path.join(path, filename))
 
-    nframes = max(files, key = lambda x: x[0])[0] + 1
-    files = sorted(files, key = lambda x: (x[0], x[1]))
-    frames = [{} for _ in range(nframes)]
-    for (frame, entity, filepath) in files:
-        frames[frame]["Entity{}".format(entity)] = filepath
+def render_pba_simulation_to_usd(renderer: UsdRenderer, folder: str, fps: int, frame_stop: int, map="Blues"):
+    frames = load_pba_simulation(folder, frame_stop)
+    dt = 1.0 / fps
+    time = 0.0
+    cmap = plt.get_cmap(map)
+    for frame in frames.keys():
+        time += dt
+        renderer.begin_frame(time)
 
-    return frames
+        X, E, lamegU = frames[frame]
+        uniques = np.unique(lamegU[:, 0])
 
-def render_pba_simulation_to_usd(renderer: UsdRenderer, folder: str, lazy: bool, fps: int):
-    if not lazy:
-        frames = load_pba_simulation_eager(folder)
-        dt = 1.0 / fps
-        time = 0.0
-        for entities in frames:
-            time += dt
-            renderer.begin_frame(time)
-            for entity_id in entities.keys():
-                V, F = entities[entity_id]
-                renderer.render_mesh(entity_id, V, F, update_topology=True)
-            renderer.end_frame()
-    else:
-        frames = load_pba_simulation_lazy(folder)
-        dt = 1.0 / fps
-        time = 0.0
-        for entities in frames:
-            time += dt
-            renderer.begin_frame(time)
-            for entity_id in entities.keys():
-                filepath = entities[entity_id]
-                V, F = igl.read_triangle_mesh(filepath)
-                renderer.render_mesh(entity_id, V, F, update_topology=True)
-            renderer.end_frame()
+        log_vals = np.log(uniques)
+        norm = mcolors.Normalize(vmin=np.min(log_vals), vmax=np.max(log_vals))
+        colors = cmap(norm(log_vals))
+
+        for i, val in enumerate(uniques):
+            slice = E[np.where(lamegU[:, 0] == val)]
+            renderer.render_tetmesh(f"sim_{i}", X, slice, update_topology=True, colors=colors)
+        #renderer.render_points("sim", V, radius=0.01)
+        renderer.end_frame()
+    
