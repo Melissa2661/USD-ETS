@@ -1,4 +1,4 @@
-from render_usd import UsdRenderer
+from render_usd_2 import UsdRenderer
 import pba
 
 from pxr import Usd
@@ -29,7 +29,7 @@ if __name__ == "__main__":
         dest="fps", 
         help="Frames per second with which the simulation data input was generated.")
     parser.add_argument(
-        "--max_frame", 
+        "--max-frame", 
         type=int,
         default=-1, 
         dest="max_frame", 
@@ -41,10 +41,10 @@ if __name__ == "__main__":
         dest="up_axis",
         help="The up axis, one of ('Y' or 'Z' or less probably 'X')")
     parser.add_argument(
-        "--from-pba",
+        "--override-fps",
         action="store_true",
-        dest="from_pba",
-        help="Set to true if the simulation data input comes from the PBA toolkit."
+        dest="override_fps",
+        help="Set to true if the simulation data input contains its own fps metadata."
     )
     parser.add_argument(
         "--lazy", 
@@ -57,8 +57,7 @@ if __name__ == "__main__":
     stage = Usd.Stage.CreateNew(args.output)
     renderer = UsdRenderer(stage, up_axis=args.up_axis, fps=args.fps)
 
-    if args.from_pba:
-        pba.render_pba_simulation_to_usd(renderer, args.input, args.fps, args.max_frame)
+    pba.render_pba_simulation_to_usd(renderer, args.input, args.fps, args.max_frame, args.override_fps)
 
     renderer.save()
         
