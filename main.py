@@ -1,4 +1,4 @@
-from render_usd_2 import UsdRenderer
+from render_usd import UsdRenderer
 import pba
 
 from pxr import Usd

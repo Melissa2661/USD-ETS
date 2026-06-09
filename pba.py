@@ -1,5 +1,5 @@
 from html import entities
-from render_usd_2 import UsdRenderer
+from render_usd import UsdRenderer
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
